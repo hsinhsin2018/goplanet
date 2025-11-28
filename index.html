@@ -782,8 +782,8 @@
 
               {/* 彈出視窗層 */}
               {gameStatus === 'ended' && (
-                 <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/40 backdrop-blur-[2px]">
-                     <div className="relative bg-white p-6 rounded-3xl shadow-2xl transform animate-bounce-short text-center w-72 overflow-hidden border-4 border-pink-200">
+                 <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/30 backdrop-blur-[2px] p-4"> {/* 這裡加入了 p-4 */}
+                     <div className="relative bg-white p-6 rounded-3xl shadow-2xl transform animate-bounce-short text-center w-full max-w-sm border-4 border-pink-200"> {/* 這裡修正了寬度為 max-w-sm */}
                          <WinEffect />
                          
                          <div className="relative z-10">
