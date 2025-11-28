@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>圍棋星球 (Chiikawa Planet)</title>
+    
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 引入 React 和 ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- 引入 Babel 用於解析 JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- 自定義動畫樣式 -->
+    <style>
+        @keyframes bounce-short { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-25%); } }
+        .animate-bounce-short { animation: bounce-short 0.5s ease-in-out 1; }
+        .animate-spin-slow { animation: spin 3s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes fade-in-down { 0% { opacity: 0; transform: translateY(-20px); } 100% { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in-down { animation: fade-in-down 0.5s ease-out; }
+        
+        @keyframes bloom-fade {
+            0% { transform: scale(0); opacity: 0.8; }
+            100% { transform: scale(1.5); opacity: 0; }
+        }
+        .animate-bloom-fade { animation: bloom-fade 0.6s ease-out forwards; }
+
+        @keyframes ripple {
+            0% { transform: scale(0.8); opacity: 1; border-width: 4px; }
+            100% { transform: scale(2); opacity: 0; border-width: 0px; }
+        }
+        .animate-ripple { animation: ripple 0.8s ease-out forwards; }
+
+        @keyframes particle-out {
+            0% { transform: rotate(var(--rot)) translate(0) scale(0); opacity: 1; }
+            100% { transform: rotate(var(--rot)) translate(80px) scale(1); opacity: 0; }
+        }
+        
+        @keyframes pop-in {
+            0% { transform: scale(0) rotate(-180deg); opacity: 0; }
+            60% { transform: scale(1.2) rotate(10deg); opacity: 1; }
+            100% { transform: scale(1) rotate(0deg); opacity: 1; }
+        }
+        .animate-pop-in { animation: pop-in 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+
+        @keyframes spin-slow-reverse {
+            from { transform: rotate(360deg); }
+            to { transform: rotate(0deg); }
+        }
+        .animate-spin-slow-reverse { animation: spin-slow-reverse 8s linear infinite; }
+
+        @keyframes confetti-fall {
+            0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+            100% { transform: translateY(200px) rotate(360deg); opacity: 0; }
+        }
+    </style>
+</head>
+<body class="bg-[#d0f0c0] font-sans select-none">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // --- 內建圖示 (無需 import) ---
+        const IconBase = ({ children, className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                {children}
+            </svg>
+        );
+
+        const RefreshCcw = (props) => <IconBase {...props}><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></IconBase>;
+        const Trophy = (props) => <IconBase {...props}><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></IconBase>;
+        const Brain = (props) => <IconBase {...props}><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></IconBase>;
+        const Bot = (props) => <IconBase {...props}><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></IconBase>;
+        const CheckCircle = (props) => <IconBase {...props}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></IconBase>;
+        const Play = (props) => <IconBase {...props}><polygon points="5 3 19 12 5 21 5 3"/></IconBase>;
+        const LogOut = (props) => <IconBase {...props}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></IconBase>;
+        const AlertTriangle = (props) => <IconBase {...props}><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></IconBase>;
+        const Calculator = (props) => <IconBase {...props}><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></IconBase>;
+
+        // --- 配色與樣式 ---
+        const THEME = {
+          bg: 'bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50',
+          board: 'bg-[#eecfa1]',
+          boardBorder: 'border-[#dcbfa3]',
+          gridLine: 'bg-black',
+          p1: {
+            id: 'p1',
+            name: '黑棋',
+            color: 'bg-black', 
+            stoneStyle: 'bg-[radial-gradient(circle_at_30%_30%,_#666_2%,_#1a1a1a_30%,_#000000_100%)] shadow-[2px_3px_5px_rgba(0,0,0,0.5)]',
+            text: 'text-slate-900',
+            light: 'bg-slate-100', 
+          },
+          p2: {
+            id: 'p2',
+            name: '白棋',
+            color: 'bg-white', 
+            stoneStyle: 'bg-[radial-gradient(circle_at_30%_30%,_#ffffff_5%,_#f8f8f8_40%,_#dcdcdc_100%)] shadow-[2px_3px_5px_rgba(0,0,0,0.3)]',
+            text: 'text-slate-600',
+            light: 'bg-white', 
+          }
+        };
+
+        // --- 背景插圖組件 (可愛宇宙風格 SVG) ---
+        const SpaceBackground = () => (
+          <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+            <svg className="absolute top-[10%] left-[5%] w-12 h-12 text-yellow-200 opacity-60 animate-pulse" viewBox="0 0 100 100">
+              <path d="M50 10 L60 35 L85 35 L65 50 L75 75 L50 60 L25 75 L35 50 L15 35 L40 35 Z" fill="currentColor" />
+            </svg>
+            <svg className="absolute top-[15%] right-[10%] w-24 h-24 text-pink-200 opacity-50" viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="30" fill="currentColor" />
+              <ellipse cx="50" cy="50" rx="45" ry="12" fill="none" stroke="#fbcfe8" strokeWidth="6" transform="rotate(-20 50 50)" />
+            </svg>
+            <svg className="absolute bottom-[20%] left-[10%] w-20 h-20 opacity-40" viewBox="0 0 100 100">
+                <path d="M50 10 Q70 40 70 70 L50 60 L30 70 Q30 40 50 10 Z" fill="#93c5fd" />
+                <path d="M50 60 L50 80" stroke="#60a5fa" strokeWidth="4" strokeLinecap="round" />
+                <circle cx="50" cy="40" r="8" fill="white" opacity="0.8" />
+                <path d="M30 70 L20 85 M70 70 L80 85" fill="none" stroke="#93c5fd" strokeWidth="4" strokeLinecap="round" />
+            </svg>
+            <svg className="absolute top-[40%] right-[5%] w-16 h-16 text-green-200 opacity-40 animate-bounce-slow" viewBox="0 0 100 100">
+               <ellipse cx="50" cy="60" rx="40" ry="15" fill="#a7f3d0" />
+               <path d="M30 60 Q50 20 70 60" fill="#d1fae5" stroke="#a7f3d0" strokeWidth="2" />
+               <circle cx="20" cy="60" r="3" fill="#34d399" />
+               <circle cx="50" cy="60" r="3" fill="#34d399" />
+               <circle cx="80" cy="60" r="3" fill="#34d399" />
+            </svg>
+            <div className="absolute top-[60%] left-[20%] w-4 h-4 bg-yellow-100 rounded-full opacity-40"></div>
+            <div className="absolute top-[80%] right-[30%] w-6 h-6 bg-purple-200 rounded-full opacity-30"></div>
+            <div className="absolute top-[30%] left-[40%] w-3 h-3 bg-blue-100 rounded-full opacity-50"></div>
+          </div>
+        );
+
+        // --- 難度設定 ---
+        const DIFFICULTY_LEVELS = [
+          { 
+            level: 1, 
+            label: '初級', 
+            desc: '簡單', 
+            imgSrc: 'https://img2.91mai.com/o2o/image/cc99fb35-c605-4666-9cf7-6058c47f7645.jpg',
+            charName: '吉伊',
+            slogan: '一起加油！', 
+          },
+          { 
+            level: 2, 
+            label: '中級', 
+            desc: '普通', 
+            imgSrc: 'https://img2.91mai.com/o2o/image/65431ff4-7c34-49e3-9240-5d92ace16fab.jpg',
+            charName: '小八',
+            slogan: '會有辦法的！', 
+          },
+          { 
+            level: 3, 
+            label: '高級', 
+            desc: '挑戰', 
+            imgSrc: 'https://img2.91mai.com/o2o/image/60817ea8-a092-4239-a4fe-2eb0a8db4b8e.jpg',
+            charName: '烏薩奇',
+            slogan: '放馬過來！', 
+          },
+        ];
+
+        const BOARD_OPTIONS = [
+            { size: 9, label: '9路 (入門)' },
+            { size: 13, label: '13路 (進階)' },
+            { size: 19, label: '19路 (標準)' },
+        ];
+
+        const KOMI = 7.5;
+
+        // --- 特效組件 ---
+        const CaptureEffect = () => (
+          <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-50">
+            <div className="absolute w-32 h-32 bg-pink-300 rounded-full opacity-0 animate-bloom-fade blur-xl"></div>
+            <div className="absolute w-full h-full border-4 border-pink-200 rounded-full opacity-0 animate-ripple"></div>
+            <div className="relative w-40 h-40 animate-spin-slow-reverse">
+                {[...Array(8)].map((_, i) => (
+                    <div 
+                        key={i}
+                        className="absolute top-1/2 left-1/2 w-4 h-4 bg-pink-400 rounded-full shadow-[0_0_10px_rgba(255,192,203,0.8)]"
+                        style={{
+                            transform: `rotate(${i * 45}deg) translate(60px) scale(0)`,
+                            animation: `particle-out 0.8s ease-out forwards ${i * 0.05}s`
+                        }}
+                    />
+                ))}
+            </div>
+            <svg viewBox="0 0 100 100" className="w-24 h-24 absolute animate-pop-in">
+                <path d="M50 10 L60 35 L85 35 L65 50 L75 75 L50 60 L25 75 L35 50 L15 35 L40 35 Z" fill="#ffe4e6" stroke="#f472b6" strokeWidth="2" />
+                <circle cx="50" cy="50" r="15" fill="#fff" opacity="0.8" />
+            </svg>
+          </div>
+        );
+
+        const WinEffect = () => (
+          <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden rounded-2xl">
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[200%] h-[200%] bg-[conic-gradient(from_0deg,transparent_0deg,#fff7ed_30deg,transparent_60deg,#fff7ed_90deg,transparent_120deg)] animate-spin-slow opacity-50"></div>
+              {[...Array(20)].map((_, i) => (
+                  <div 
+                    key={i}
+                    className={`absolute w-2 h-4 rounded-sm ${['bg-pink-300', 'bg-yellow-300', 'bg-blue-300', 'bg-green-300'][i % 4]}`}
+                    style={{
+                        top: '-20px',
+                        left: `${Math.random() * 100}%`,
+                        animation: `confetti-fall ${1.5 + Math.random()}s linear infinite`,
+                        animationDelay: `${Math.random()}s`
+                    }}
+                  />
+              ))}
+          </div>
+        );
+
+        // --- 核心邏輯 ---
+        const isOnBoard = (x, y, size) => x >= 0 && x < size && y >= 0 && y < size;
+        const getStone = (board, x, y) => board[y][x];
+
+        const getGroup = (board, x, y, size) => {
+          const color = getStone(board, x, y);
+          if (!color) return null;
+          const group = [];
+          const visited = new Set();
+          const queue = [{ x, y }];
+          while (queue.length > 0) {
+            const { x: cx, y: cy } = queue.pop();
+            const key = `${cx},${cy}`;
+            if (visited.has(key)) continue;
+            visited.add(key);
+            group.push({ x: cx, y: cy });
+            [[0, 1], [0, -1], [1, 0], [-1, 0]].forEach(([dx, dy]) => {
+              const nx = cx + dx, ny = cy + dy;
+              if (isOnBoard(nx, ny, size) && getStone(board, nx, ny) === color) queue.push({ x: nx, y: ny });
+            });
+          }
+          return group;
+        };
+
+        const countLiberties = (board, group, size) => {
+          const liberties = new Set();
+          for (const stone of group) {
+            [[0, 1], [0, -1], [1, 0], [-1, 0]].forEach(([dx, dy]) => {
+              const nx = stone.x + dx, ny = stone.y + dy;
+              if (isOnBoard(nx, ny, size) && getStone(board, nx, ny) === null) liberties.add(`${nx},${ny}`);
+            });
+          }
+          return liberties.size;
+        };
+
+        const simulateMove = (currentBoard, x, y, color, size) => {
+          if (currentBoard[y][x] !== null) return { valid: false };
+          const opponent = color === 'p1' ? 'p2' : 'p1';
+          const newBoard = currentBoard.map(row => [...row]);
+          newBoard[y][x] = color;
+          let capturedCount = 0;
+          const directions = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+          const capturedGroups = [];
+          directions.forEach(([dx, dy]) => {
+            const nx = x + dx, ny = y + dy;
+            if (isOnBoard(nx, ny, size) && newBoard[ny][nx] === opponent) {
+              const group = getGroup(newBoard, nx, ny, size);
+              if (group && countLiberties(newBoard, group, size) === 0) capturedGroups.push(group);
+            }
+          });
+          capturedGroups.forEach(group => {
+            group.forEach(stone => {
+              newBoard[stone.y][stone.x] = null;
+              capturedCount++;
+            });
+          });
+          if (capturedCount === 0) {
+            const myGroup = getGroup(newBoard, x, y, size);
+            if (countLiberties(newBoard, myGroup, size) === 0) return { valid: false, suicide: true };
+          }
+          return { valid: true, newBoard, capturedCount };
+        };
+
+        const calculateScore = (board, size) => {
+            let blackStones = 0;
+            let whiteStones = 0;
+            let blackTerritory = 0;
+            let whiteTerritory = 0;
+            const territoryMap = Array(size).fill(null).map(() => Array(size).fill(null)); 
+            const visited = new Set();
+            for (let y = 0; y < size; y++) {
+                for (let x = 0; x < size; x++) {
+                    const color = board[y][x];
+                    if (color === 'p1') blackStones++;
+                    else if (color === 'p2') whiteStones++;
+                    else {
+                        const key = `${x},${y}`;
+                        if (visited.has(key)) continue;
+                        const emptyGroup = [];
+                        const queue = [{ x, y }];
+                        visited.add(key);
+                        let touchesBlack = false;
+                        let touchesWhite = false;
+                        while (queue.length > 0) {
+                            const { x: cx, y: cy } = queue.pop();
+                            emptyGroup.push({ x: cx, y: cy });
+                            [[0, 1], [0, -1], [1, 0], [-1, 0]].forEach(([dx, dy]) => {
+                                const nx = cx + dx, ny = cy + dy;
+                                if (isOnBoard(nx, ny, size)) {
+                                    const neighborColor = board[ny][nx];
+                                    if (neighborColor === 'p1') touchesBlack = true;
+                                    else if (neighborColor === 'p2') touchesWhite = true;
+                                    else {
+                                        const nKey = `${nx},${ny}`;
+                                        if (!visited.has(nKey)) {
+                                            visited.add(nKey);
+                                            queue.push({ x: nx, y: ny });
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                        if (touchesBlack && !touchesWhite) {
+                            blackTerritory += emptyGroup.length;
+                            emptyGroup.forEach(p => territoryMap[p.y][p.x] = 'p1');
+                        } else if (!touchesBlack && touchesWhite) {
+                            whiteTerritory += emptyGroup.length;
+                            emptyGroup.forEach(p => territoryMap[p.y][p.x] = 'p2');
+                        } else {
+                            emptyGroup.forEach(p => territoryMap[p.y][p.x] = 'neutral');
+                        }
+                    }
+                }
+            }
+            return {
+                black: blackStones + blackTerritory,
+                white: whiteStones + whiteTerritory + KOMI,
+                details: { blackStones, blackTerritory, whiteStones, whiteTerritory, komi: KOMI },
+                territoryMap
+            };
+        };
+
+        // --- 強化後的攻擊型 AI 邏輯 ---
+        const getAiMove = (board, size, aiColor, difficulty) => {
+          const validMoves = [];
+          const opponent = aiColor === 'p1' ? 'p2' : 'p1';
+          for (let y = 0; y < size; y++) {
+            for (let x = 0; x < size; x++) {
+              const result = simulateMove(board, x, y, aiColor, size);
+              if (result.valid) {
+                let score = Math.random() * 10; // 基礎隨機分
+                
+                // 1. 吃子權重 (大幅提升，鼓勵進攻)
+                if (result.capturedCount > 0) {
+                    // 高級模式更積極吃子
+                    const multiplier = difficulty >= 2 ? 2000 : 1000; 
+                    score += multiplier * result.capturedCount;
+                }
+
+                if (difficulty >= 2) {
+                    // 2. 叫吃 (Atari) 判斷 - 即使吃不到，也要威脅對方
+                    const directions = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+                    let putsOpponentInAtari = false;
+                    directions.forEach(([dx, dy]) => {
+                        const nx = x + dx, ny = y + dy;
+                        if (isOnBoard(nx, ny, size) && result.newBoard[ny][nx] === opponent) {
+                            const group = getGroup(result.newBoard, nx, ny, size);
+                            if (group && countLiberties(result.newBoard, group, size) === 1) {
+                                putsOpponentInAtari = true;
+                            }
+                        }
+                    });
+                    // 叫吃給予高分，讓 AI 喜歡貼著對方下
+                    if (putsOpponentInAtari) score += 400; 
+
+                    // 3. 接觸戰 (Proximity) - 鼓勵下在有棋子的地方，而不是空地
+                    let hasNeighbor = false;
+                    directions.forEach(([dx, dy]) => {
+                        const nx = x + dx, ny = y + dy;
+                        if (isOnBoard(nx, ny, size) && board[ny][nx] !== null) {
+                            hasNeighbor = true;
+                        }
+                    });
+                    if (hasNeighbor) score += 20; 
+                }
+
+                if (difficulty >= 3) {
+                  // 4. 佈局 (金角銀邊)
+                  if ((x === 2 || x === size - 3) && (y === 2 || y === size - 3)) score += 60;
+                  if ((x === size/2 | 0) && (y === size/2 | 0)) score += 30;
+
+                  // 5. 避免自殺式填眼 (除非是為了殺棋)
+                  const myGroup = getGroup(result.newBoard, x, y, size);
+                  if (countLiberties(result.newBoard, myGroup, size) <= 1 && result.capturedCount === 0) {
+                      score -= 500; 
+                  }
+                }
+                validMoves.push({ x, y, score });
+              }
+            }
+          }
+          
+          // 6. 防守 (Block) - 權重調整，避免過度防守
+          if (difficulty >= 2) {
+            for (let y = 0; y < size; y++) {
+              for (let x = 0; x < size; x++) {
+                if (board[y][x] === null) {
+                  const enemyResult = simulateMove(board, x, y, opponent, size);
+                  if (enemyResult.valid && enemyResult.capturedCount > 0) {
+                     const move = validMoves.find(m => m.x === x && m.y === y);
+                     if (move) {
+                         // 只有當救活的子 > 1 或是關鍵位置時才高分防守
+                         // 否則有時候會選擇對殺
+                         const defenseScore = enemyResult.capturedCount * 800; 
+                         move.score += defenseScore;
+                     }
+                  }
+                }
+              }
+            }
+          }
+
+          if (validMoves.length === 0) return null;
+          
+          // 根據分數排序
+          validMoves.sort((a, b) => b.score - a.score);
+          
+          // 難度隨機性調整
+          if (difficulty === 1) {
+              // 初級：在前 8 名中隨機選，比較容易失誤
+              return validMoves[Math.floor(Math.random() * Math.min(validMoves.length, 8))];
+          }
+          if (difficulty === 2) {
+              // 中級：20% 機率手滑，選前 3 名
+              if (Math.random() < 0.2) return validMoves[Math.floor(Math.random() * Math.min(validMoves.length, 3))];
+              return validMoves[0];
+          }
+          // 高級：總是選最佳解
+          return validMoves[0];
+        };
+
+        // --- App Component ---
+        function App() {
+          const [gameStatus, setGameStatus] = useState('setup');
+          const [playerColor, setPlayerColor] = useState('p1');
+          const [difficulty, setDifficulty] = useState(1);
+          const [boardSize, setBoardSize] = useState(9);
+          const [board, setBoard] = useState([]);
+          const [turn, setTurn] = useState('p1');
+          const [prisoners, setPrisoners] = useState({ p1: 0, p2: 0 });
+          const [lastMove, setLastMove] = useState(null);
+          const [message, setMessage] = useState('');
+          const [showConfetti, setShowConfetti] = useState(false);
+          const [isAiThinking, setIsAiThinking] = useState(false);
+          const [finalScore, setFinalScore] = useState(null);
+          const [territoryMap, setTerritoryMap] = useState(null);
+          const [confirmAction, setConfirmAction] = useState(null);
+
+          const hasMoves = board.length > 0 && board.some(row => row.some(cell => cell !== null));
+
+          const handleSetBoardSize = (size) => {
+              setBoardSize(size);
+              if (size === 9) {
+                  setDifficulty(1);
+              } else {
+                  if (difficulty === 1) {
+                      setDifficulty(2);
+                  }
+              }
+          };
+
+          const startGame = () => {
+            const size = boardSize;
+            setBoard(Array(size).fill(null).map(() => Array(size).fill(null)));
+            setTurn('p1'); 
+            setPrisoners({ p1: 0, p2: 0 });
+            setLastMove(null);
+            setFinalScore(null);
+            setTerritoryMap(null);
+            setShowConfetti(false);
+            setGameStatus('playing');
+            setMessage('遊戲開始！落子無悔喔！');
+            setConfirmAction(null); 
+          };
+
+          const executeMove = (x, y, isAuto = false) => {
+            setShowConfetti(false);
+            const result = simulateMove(board, x, y, turn, boardSize);
+            if (!result.valid) {
+                if (!isAuto && result.suicide) {
+                    setMessage('這裡是禁著點(沒有氣)，不能下喔！');
+                    if (navigator.vibrate) navigator.vibrate(200);
+                }
+                return false;
+            }
+            setBoard(result.newBoard);
+            setLastMove({ x, y });
+            if (result.capturedCount > 0) {
+              setPrisoners(prev => ({ ...prev, [turn]: prev[turn] + result.capturedCount }));
+              const playerText = turn === 'p1' ? '黑棋' : '白棋';
+              setMessage(isAuto ? `AI ${playerText} 吃了 ${result.capturedCount} 子！` : `哇！你抓到了 ${result.capturedCount} 顆棋子！`);
+              setShowConfetti(true);
+              setTimeout(() => setShowConfetti(false), 2500);
+            } else {
+                setMessage(null);
+            }
+            setTurn(turn === 'p1' ? 'p2' : 'p1');
+            return true;
+          };
+
+          const handlePlayerMove = (x, y) => {
+            if (gameStatus !== 'playing') return;
+            if (turn !== playerColor) return;
+            if (isAiThinking) return;
+            executeMove(x, y);
+          };
+
+          useEffect(() => {
+            if (gameStatus === 'playing' && turn !== playerColor) {
+              setIsAiThinking(true);
+              const timer = setTimeout(() => {
+                const aiMove = getAiMove(board, boardSize, turn, difficulty);
+                if (aiMove) {
+                  executeMove(aiMove.x, aiMove.y, true);
+                } else {
+                  setTurn(turn === 'p1' ? 'p2' : 'p1'); 
+                  setMessage('AI 選擇虛手');
+                }
+                setIsAiThinking(false);
+              }, 800 + Math.random() * 500);
+              return () => clearTimeout(timer);
+            }
+          }, [turn, gameStatus, board]);
+
+          const handleManualEndGame = () => {
+            const result = calculateScore(board, boardSize);
+            setFinalScore(result);
+            setGameStatus('ended');
+            setShowConfetti(false); 
+            setMessage(`結算完成！${result.black > result.white ? '黑棋' : '白棋'}獲勝！`);
+          };
+
+          const onLeaveRequest = () => {
+            setConfirmAction({ type: 'leave', title: '確定要離開嗎？', desc: '這盤棋還沒下完喔！' });
+          };
+
+          const onRestartRequest = () => {
+            setConfirmAction({ type: 'restart', title: '確定要重來嗎？', desc: '現在的棋局會消失喔！' });
+          };
+
+          const onConfirm = () => {
+            if (confirmAction.type === 'leave') {
+              setGameStatus('setup');
+            } else if (confirmAction.type === 'restart') {
+              startGame();
+            }
+            setConfirmAction(null);
+          };
+
+          const onCancel = () => setConfirmAction(null);
+
+          // GridLines Component
+          const GridLines = ({ size }) => {
+            const margin = 50 / size; 
+            const lineLength = 100 - (100 / size); 
+            return (
+                <div className="absolute inset-[4%] pointer-events-none z-0">
+                    <div className="absolute border-2 border-black" style={{ top: `calc(${margin}% - 1px)`, left: `calc(${margin}% - 1px)`, width: `calc(${lineLength}% + 2px)`, height: `calc(${lineLength}% + 2px)`, boxSizing: 'border-box' }} />
+                    {Array.from({ length: size }).map((_, i) => {
+                        if (i === 0 || i === size - 1) return null; 
+                        return <div key={`h-${i}`} className="absolute h-[1px] md:h-[1.5px] bg-black" style={{ top: `calc(${((i + 0.5) / size) * 100}% - 0.5px)`, left: `${margin}%`, width: `${lineLength}%` }} />;
+                    })}
+                    {Array.from({ length: size }).map((_, i) => {
+                        if (i === 0 || i === size - 1) return null; 
+                        return <div key={`v-${i}`} className="absolute w-[1px] md:w-[1.5px] bg-black" style={{ left: `calc(${((i + 0.5) / size) * 100}% - 0.5px)`, top: `${margin}%`, height: `${lineLength}%` }} />;
+                    })}
+                </div>
+            );
+          };
+
+          // StarPoints Component
+          const StarPoints = ({ size }) => {
+            let points = [];
+            if (size === 9) points = [[2, 2], [6, 2], [4, 4], [2, 6], [6, 6]];
+            else if (size === 13) points = [[3, 3], [9, 3], [6, 6], [3, 9], [9, 9]];
+            else if (size === 19) points = [[3, 3], [9, 3], [15, 3], [3, 9], [9, 9], [15, 9], [3, 15], [9, 15], [15, 15]];
+            return (
+                <div className="absolute inset-[4%] pointer-events-none z-0">
+                     {points.map(([x, y], i) => (
+                        <div key={i} className="absolute w-1.5 h-1.5 md:w-2 md:h-2 bg-black rounded-full transform -translate-x-1/2 -translate-y-1/2" style={{ left: `${((x + 0.5) / size) * 100}%`, top: `${((y + 0.5) / size) * 100}%` }} />
+                    ))}
+                </div>
+            );
+          };
+
+          // ActionButton Component
+          const ActionButton = ({ onClick, label, color, disabled }) => (
+            <button onClick={onClick} disabled={disabled} className={`flex items-center justify-center h-14 md:h-16 rounded-2xl transition-all duration-200 px-2 ${disabled ? 'opacity-40 cursor-not-allowed bg-slate-300' : `${color} active:translate-y-1 active:shadow-none hover:-translate-y-0.5`}`}>
+              <span className="text-base md:text-lg font-black tracking-wider whitespace-nowrap">{label}</span>
+            </button>
+          );
+
+          // PlayerCard Component
+          const PlayerCard = ({ player, isActive, prisoners, isAi, thinking, score, aiImg }) => {
+            const info = THEME[player];
+            return (
+              <div className={`flex-1 rounded-2xl p-2 md:p-3 flex flex-col items-center transition-all duration-300 border-2 relative overflow-hidden ${isActive ? `scale-105 shadow-lg ${info.border} ${info.light}` : 'border-transparent bg-white/50 scale-100 grayscale-[0.3]'}`}>
+                {isAi && <div className="absolute top-0 right-0 bg-slate-600 text-white text-[9px] px-1.5 py-0.5 rounded-bl-lg font-bold">AI</div>}
+                {!isAi && <div className="absolute top-0 right-0 bg-pink-400 text-white text-[9px] px-1.5 py-0.5 rounded-bl-lg font-bold">YOU</div>}
+                <div className={`w-12 h-12 md:w-14 md:h-14 rounded-full mb-1 flex items-center justify-center text-lg shadow-sm border-0 relative overflow-hidden bg-white ${thinking ? 'animate-pulse' : ''}`}>
+                   <div className={`w-full h-full rounded-full ${info.stoneStyle}`}></div>
+                   {isAi && <Bot size={20} className={`absolute z-10 ${player === 'p1' ? 'text-white/50' : 'text-slate-800/50'}`} />}
+                </div>
+                <div className="text-slate-700 font-bold mb-1 text-xs">{info.name}</div>
+                {score !== undefined ? (
+                    <div className="text-xl font-black text-slate-800">{score}</div>
+                ) : (
+                    <div className="bg-white/60 px-2 py-0.5 rounded-lg flex items-center gap-1 text-xs font-bold text-slate-500">
+                      <Trophy size={12} className="text-yellow-500" />
+                      {prisoners}
+                    </div>
+                )}
+              </div>
+            );
+          };
+
+          // Render Setup Screen
+          if (gameStatus === 'setup') {
+            return (
+              <div className={`min-h-screen ${THEME.bg} font-sans flex flex-col items-center justify-center p-4 relative`}>
+                <SpaceBackground />
+                <div className="bg-white/90 p-6 md:p-8 rounded-3xl shadow-xl max-w-md w-full animate-fade-in-down border-4 border-blue-100 overflow-y-auto max-h-[90vh] relative z-10">
+                    <h1 className="text-3xl font-black text-slate-700 text-center mb-6 flex items-center justify-center">
+                        <span className="text-blue-400">圍棋</span>
+                        <span className="text-pink-400">星球</span>
+                    </h1>
+
+                    <div className="mb-5">
+                        <label className="block text-slate-500 font-bold mb-2 text-md">選擇顏色</label>
+                        <div className="grid grid-cols-2 gap-3">
+                            <button onClick={() => setPlayerColor('p1')} className={`p-3 rounded-xl border-2 flex flex-col items-center gap-2 transition-all ${playerColor === 'p1' ? 'bg-slate-800 text-white border-slate-800 ring-2 ring-offset-2 ring-slate-400' : 'bg-white text-slate-500 border-slate-200'}`}>
+                                <div className="w-6 h-6 rounded-full bg-black shadow-sm bg-[radial-gradient(circle_at_35%_35%,_#666_0%,_#000_100%)]"></div>
+                                <span className="font-bold text-sm">黑棋 (先手)</span>
+                            </button>
+                            <button onClick={() => setPlayerColor('p2')} className={`p-3 rounded-xl border-2 flex flex-col items-center gap-2 transition-all ${playerColor === 'p2' ? 'bg-white text-slate-800 border-slate-300 ring-2 ring-offset-2 ring-slate-300' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                                 <div className="w-6 h-6 rounded-full bg-white border border-slate-300 shadow-sm bg-[radial-gradient(circle_at_35%_35%,_#fff_0%,_#ccc_100%)]"></div>
+                                 <span className="font-bold text-sm">白棋 (後手)</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="mb-5">
+                        <label className="block text-slate-500 font-bold mb-2 text-md">棋盤大小</label>
+                        <div className="grid grid-cols-3 gap-2">
+                            {BOARD_OPTIONS.map((opt) => (
+                                <button key={opt.size} onClick={() => handleSetBoardSize(opt.size)} className={`py-2 px-1 rounded-lg border-2 text-sm font-bold transition-all ${boardSize === opt.size ? 'bg-blue-100 border-blue-400 text-blue-700' : 'bg-white border-slate-200 text-slate-400'}`}>
+                                    {opt.size}路
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="mb-6">
+                        <label className="block text-slate-500 font-bold mb-2 text-md">對手等級</label>
+                        <div className="space-y-2">
+                            {DIFFICULTY_LEVELS.map((lvl) => {
+                                let isDisabled = false;
+                                let hintText = "";
+                                if (boardSize === 9) {
+                                    if (lvl.level > 1) { isDisabled = true; hintText = "需選擇13路或19路解鎖"; }
+                                } else {
+                                    if (lvl.level === 1) { isDisabled = true; hintText = "大棋盤不適合初級對手"; }
+                                }
+                                return (
+                                    <button key={lvl.level} onClick={() => !isDisabled && setDifficulty(lvl.level)} disabled={isDisabled} className={`w-full p-3 rounded-xl border-2 text-left transition-all flex items-center gap-3 ${isDisabled ? 'opacity-50 cursor-not-allowed bg-slate-100 border-slate-100 grayscale' : difficulty === lvl.level ? 'border-pink-400 bg-pink-50' : 'border-slate-200 bg-white hover:border-pink-100'} ${!isDisabled && difficulty === lvl.level ? 'ring-2 ring-pink-200' : ''}`}>
+                                        <div className={`w-16 h-16 rounded-full flex-shrink-0 flex items-center justify-center border-2 shadow-sm bg-white overflow-hidden p-1`}>
+                                            <img src={lvl.imgSrc} alt={lvl.charName} className="w-full h-full object-cover" />
+                                        </div>
+                                        <div>
+                                            <div className={`font-bold text-sm flex items-center gap-2 ${difficulty === lvl.level && !isDisabled ? 'text-slate-800' : 'text-slate-600'}`}>
+                                                {lvl.label}
+                                                {difficulty === lvl.level && !isDisabled && <span className="text-xs bg-slate-800 text-white px-2 py-0.5 rounded-full shadow-sm animate-pulse">{lvl.slogan}</span>}
+                                            </div>
+                                            <div className="text-xs opacity-70">{lvl.desc}</div>
+                                            {isDisabled && <div className="text-[10px] text-red-400 font-bold">{hintText}</div>}
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    <button onClick={startGame} className="w-full py-3 rounded-2xl bg-gradient-to-r from-blue-400 to-pink-400 text-white font-black text-lg shadow-lg shadow-blue-200 transform hover:-translate-y-1 transition-transform flex items-center justify-center gap-2">
+                        <Play size={20} />
+                        開始對弈
+                    </button>
+                </div>
+              </div>
+            );
+          }
+
+          const opponentLevel = DIFFICULTY_LEVELS[difficulty - 1];
+
+          // Render Game Screen
+          return (
+            <div className={`min-h-screen ${THEME.bg} font-sans select-none flex flex-col items-center py-4 px-2 relative`}>
+              <SpaceBackground />
+              
+              <div className="w-full max-w-md flex justify-between items-center mb-4 relative z-10">
+                  <div className="w-12"></div> 
+                  <div className="flex flex-col items-center">
+                     <div className="text-lg font-black text-slate-700 tracking-wider">圍棋星球</div>
+                     <div className="text-[10px] font-bold text-pink-400 bg-pink-100 px-2 rounded-full flex items-center gap-1">
+                        <span className="w-3 h-3 inline-block rounded-full overflow-hidden">
+                            <img src={opponentLevel.imgSrc} alt="" className="w-full h-full object-cover" />
+                        </span>
+                        {boardSize}路 VS Lv.{difficulty}
+                     </div>
+                  </div>
+                  <div className="w-12"></div> 
+              </div>
+
+              <div className="flex justify-between items-center w-full max-w-md mb-4 gap-2 relative z-10">
+                <PlayerCard player="p1" isActive={turn === 'p1'} prisoners={prisoners.p1} isAi={playerColor === 'p2'} thinking={turn === 'p1' && isAiThinking} score={finalScore?.black} aiImg={playerColor === 'p2' ? opponentLevel.imgSrc : null} />
+                <div className="text-xl font-black text-slate-300">VS</div>
+                <PlayerCard player="p2" isActive={turn === 'p2'} prisoners={prisoners.p2} isAi={playerColor === 'p1'} thinking={turn === 'p2' && isAiThinking} score={finalScore?.white} aiImg={playerColor === 'p1' ? opponentLevel.imgSrc : null} />
+              </div>
+
+              <div className="h-8 mb-2 flex items-center justify-center w-full px-2 relative z-10">
+                {gameStatus === 'ended' ? (
+                     <div className="text-sm font-bold text-white bg-gradient-to-r from-blue-400 to-pink-400 px-4 py-1 rounded-full shadow-md">
+                        {finalScore.black > finalScore.white ? '黑棋獲勝！' : '白棋獲勝！'}
+                     </div>
+                ) : isAiThinking ? (
+                     <div className="flex items-center gap-2 text-slate-500 text-sm font-bold bg-white/60 px-4 py-1 rounded-full animate-pulse">
+                        <Brain size={14} /> AI 思考中...
+                     </div>
+                ) : (
+                  <div className="bg-white/90 px-4 py-1 rounded-full shadow-sm text-slate-600 text-sm font-bold border border-slate-100 truncate max-w-full">
+                    {message || '輪到你了'}
+                  </div>
+                )}
+              </div>
+
+              <div className="relative p-2 md:p-3 bg-[#e8d5b5] rounded-xl shadow-[0_8px_0_#d4c0a0] mb-6 overflow-hidden z-10">
+                <div className={`bg-[#f8e8c8] relative rounded-lg shadow-inner overflow-hidden border-2 ${THEME.boardBorder} mx-auto`} style={{ display: 'grid', gridTemplateColumns: `repeat(${boardSize}, 1fr)`, width: 'min(90vw, 360px)', height: 'min(90vw, 360px)', padding: '4%' }}>
+                  <GridLines size={boardSize} />
+                  <StarPoints size={boardSize} />
+                  {board.map((row, y) => (
+                    row.map((color, x) => (
+                      <div key={`${x}-${y}`} onClick={() => handlePlayerMove(x, y)} className={`relative z-10 flex items-center justify-center rounded-full transition-all duration-200 ${gameStatus === 'playing' && !color && !isAiThinking && turn === playerColor ? 'cursor-pointer' : ''}`}>
+                        {color && <div className={`w-[95%] h-[95%] rounded-full transition-all duration-300 transform scale-100 ${THEME[color].stoneStyle} ${lastMove?.x === x && lastMove?.y === y && gameStatus === 'playing' ? 'ring-2 ring-yellow-400 ring-offset-1 scale-105' : ''}`}></div>}
+                        {gameStatus === 'playing' && !color && turn === playerColor && !isAiThinking && <div className={`w-[85%] h-[85%] rounded-full opacity-0 hover:opacity-40 ${playerColor === 'p1' ? 'bg-black' : 'bg-white'}`}></div>}
+                      </div>
+                    ))
+                  ))}
+                </div>
+                {showConfetti && <CaptureEffect />}
+                {gameStatus === 'ended' && (
+                     <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/40 backdrop-blur-[2px] rounded-lg">
+                         <div className="relative bg-white p-6 rounded-3xl shadow-2xl transform animate-bounce-short text-center w-72 overflow-hidden border-4 border-pink-200">
+                             <WinEffect />
+                             
+                             <div className="relative z-10">
+                                <h2 className="text-3xl font-black text-slate-700 mb-6 tracking-widest">比分結果</h2>
+                                
+                                <div className="flex justify-center items-end gap-2 mb-8">
+                                    {/* 黑棋分數卡 */}
+                                    <div className={`flex flex-col items-center transition-all duration-500 ${finalScore.black > finalScore.white ? 'scale-110 z-10' : 'scale-90 opacity-60 grayscale-[0.5]'}`}>
+                                        {finalScore.black > finalScore.white && <div className="text-2xl mb-1 animate-bounce">👑</div>}
+                                        <div className={`p-3 rounded-2xl border-4 min-w-[90px] ${finalScore.black > finalScore.white ? 'bg-slate-800 border-yellow-400 shadow-lg' : 'bg-slate-100 border-slate-200'}`}>
+                                            <div className={`text-sm font-bold mb-1 ${finalScore.black > finalScore.white ? 'text-yellow-400' : 'text-slate-500'}`}>黑棋</div>
+                                            <div className={`text-4xl font-black ${finalScore.black > finalScore.white ? 'text-white' : 'text-slate-700'}`}>{finalScore.black}</div>
+                                        </div>
+                                        {finalScore.black > finalScore.white && <div className="text-xs font-black text-yellow-500 mt-2 bg-yellow-100 px-2 py-0.5 rounded-full">WINNER!</div>}
+                                    </div>
+
+                                    <div className="text-slate-300 font-black text-xl pb-8">VS</div>
+
+                                    {/* 白棋分數卡 */}
+                                    <div className={`flex flex-col items-center transition-all duration-500 ${finalScore.white > finalScore.black ? 'scale-110 z-10' : 'scale-90 opacity-60 grayscale-[0.5]'}`}>
+                                        {finalScore.white > finalScore.black && <div className="text-2xl mb-1 animate-bounce">👑</div>}
+                                        <div className={`p-3 rounded-2xl border-4 min-w-[90px] ${finalScore.white > finalScore.black ? 'bg-white border-yellow-400 shadow-lg' : 'bg-slate-100 border-slate-200'}`}>
+                                            <div className="text-sm font-bold mb-1 text-slate-500">白棋</div>
+                                            <div className={`text-4xl font-black ${finalScore.white > finalScore.black ? 'text-pink-500' : 'text-slate-700'}`}>{finalScore.white}</div>
+                                        </div>
+                                        {finalScore.white > finalScore.black && <div className="text-xs font-black text-pink-500 mt-2 bg-pink-100 px-2 py-0.5 rounded-full">WINNER!</div>}
+                                        <div className="text-[9px] text-slate-400 mt-1 font-medium transform scale-90 origin-top">(含貼目 7.5)</div>
+                                    </div>
+                                </div>
+
+                                <button onClick={startGame} className="w-full py-4 bg-gradient-to-r from-pink-400 to-orange-400 text-white rounded-2xl font-black text-lg shadow-lg hover:from-pink-500 hover:to-orange-500 transition-all active:scale-95 active:shadow-none">
+                                    再玩一局
+                                </button>
+                             </div>
+                         </div>
+                     </div>
+                )}
+                {confirmAction && (
+                    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-[1px]">
+                        <div className="bg-white p-6 rounded-3xl shadow-2xl max-w-xs w-full border-4 border-amber-200 animate-pop-in">
+                            <div className="flex justify-center mb-3 text-amber-400"><AlertTriangle size={48} /></div>
+                            <h3 className="text-xl font-black text-slate-700 text-center mb-2">{confirmAction.title}</h3>
+                            <p className="text-sm text-slate-500 text-center mb-6">{confirmAction.desc}</p>
+                            <div className="flex gap-3">
+                                <button onClick={onCancel} className="flex-1 py-3 rounded-xl font-bold bg-slate-100 text-slate-600 hover:bg-slate-200">取消</button>
+                                <button onClick={onConfirm} className="flex-1 py-3 rounded-xl font-bold bg-amber-400 text-white hover:bg-amber-500 shadow-md">確定</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+              </div>
+
+              {gameStatus === 'playing' ? (
+                  <div className="flex gap-2 w-full max-w-md justify-center px-4 relative z-10">
+                    <ActionButton onClick={onLeaveRequest} label="離開" color="bg-yellow-400 hover:bg-yellow-500 text-white border-b-4 border-yellow-600 flex-[0.6]" />
+                    <ActionButton onClick={handleManualEndGame} label="算勝負" disabled={!hasMoves} color="bg-pink-400 hover:bg-pink-500 text-white border-b-4 border-pink-600 flex-1" />
+                    <ActionButton onClick={onRestartRequest} label="重新開始" color="bg-sky-400 hover:bg-sky-500 text-white border-b-4 border-sky-600 flex-1" />
+                  </div>
+              ) : null}
+            </div>
+          );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
